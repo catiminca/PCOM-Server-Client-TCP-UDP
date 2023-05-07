@@ -1,4 +1,3 @@
-#include "helpers.h"
 #include <arpa/inet.h>
 #include <math.h>
 #include <netdb.h>
@@ -7,11 +6,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <sys/poll.h>
+
 #include "common.h"
+#include "helpers.h"
 
 struct pollfd poll_fds[MAX_CONNECTIONS];
 int nr_polls = 0;
@@ -23,7 +24,7 @@ int stdin_case(int fd) {
     if (strncmp(buff, "exit", 4) == 0) {
         return 0;
     }
-    //este subscribe sau unsubscribe
+    // este subscribe sau unsubscribe
     packet_type type;
     int len;
     char *aux = strtok(buff, " ");
@@ -35,7 +36,7 @@ int stdin_case(int fd) {
         aux = strtok(NULL, " ");
         strcpy(topic_name, aux);
         len = strlen(topic_name);
-        
+
         aux = strtok(NULL, " ");
         int sf = *aux - '0';
 
@@ -44,7 +45,7 @@ int stdin_case(int fd) {
 
         send_all(fd, &type, sizeof(packet_type));
         send_all(fd, &len, sizeof(len));
-        
+
         send_all(fd, topic_name, len);
 
         std::cout << "Subscribed to topic.\n";
@@ -57,7 +58,7 @@ int stdin_case(int fd) {
         aux = strtok(NULL, " ");
         strcpy(subcriber.topic, aux);
         int rc = send_all(fd, &subcriber, len);
-	    DIE(rc < 0, "send");
+        DIE(rc < 0, "send");
         std::cout << "Unsubscribed from topic.\n";
     }
     return 1;
@@ -76,13 +77,13 @@ int udp_handler_msg(int sockfd) {
         bytes_received = recv_all(sockfd, &message, len);
 
         if (bytes_received == 0) {
-            //close(sockfd);
+            // close(sockfd);
             return 0;
         }
 
         printf("%s - \n", message.topic);
 
-        //in fct de fiecare tip la data type
+        // in fct de fiecare tip la data type
         conver_data(message.data_type, message.content);
         return 1;
     }
@@ -90,7 +91,7 @@ int udp_handler_msg(int sockfd) {
 }
 
 void exit_err() {
-    //inchidere poll
+    // inchidere poll
     for (int i = 1; i < nr_polls; i++) {
         close(poll_fds[i].fd);
     }
@@ -100,8 +101,7 @@ void exit_err() {
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
     int sockfd = -1;
-    if (argc < 4)
-    {
+    if (argc < 4) {
         printf("\n Usage: %s <ip> <port>\n", argv[0]);
         return 1;
     }
@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
     DIE(sockfd < 0, "socket");
 
     int on = 1;
-	setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&on, sizeof(on));
+    setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&on, sizeof(on));
 
     // Completăm in serv_addr adresa serverului, familia de adrese si portul
     // pentru conectare
@@ -139,41 +139,38 @@ int main(int argc, char *argv[]) {
     send_all(sockfd, &len, sizeof(int));
     char buffer[MAX_CONTENT_LEN];
     memcpy(buffer, argv[1], len);
-	rc = send_all(sockfd, buffer, len);
+    rc = send_all(sockfd, buffer, len);
 
-	DIE(rc < 0, "Nu se poate trimite catre server");
+    DIE(rc < 0, "Nu se poate trimite catre server");
 
-
- 
     poll_fds[0].fd = STDIN_FILENO;
     poll_fds[0].events = POLLIN;
     nr_polls++;
- 
+
     // se creaza socketul serverului
- 
+
     poll_fds[1].fd = sockfd;
     poll_fds[1].events = POLLIN;
     nr_polls++;
- 
+
     while (1) {
         // se asteapta pana cand se primesc date pe cel putin unul din file descriptori
         poll(poll_fds, nr_polls, -1);
-        
+
         for (int i = 0; i < nr_polls; i++) {
             if (poll_fds[i].revents & POLLIN) {
                 if (poll_fds[i].fd == sockfd) {
                     if (udp_handler_msg(sockfd) == 0)
                         exit_err();
                 } else if (poll_fds[i].fd == STDIN_FILENO) {
-                    if(stdin_case(sockfd) == 0) {
+                    if (stdin_case(sockfd) == 0) {
                         exit_err();
                     }
                 }
             }
         }
-       
     }
-    //inchidere poll
+    // inchidere poll
     for (int i = 1; i < nr_polls; i++) {
         close(poll_fds[i].fd);
     }
